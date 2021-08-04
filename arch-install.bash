@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -u
+set -eu
 
 shopt -s extglob globstar nullglob
 
@@ -184,17 +184,18 @@ if [[ $bios == 'uefi' ]]; then
 	cp "/boot/efi/EFI/$bootloader_id/grubx64.efi" /boot/efi/EFI/boot/bootx64.efi
 fi
 
-useradd -m -G wheel -p "$hashed_password" "$username"
+useradd -m -G wheel -p "$hashed_password" -- "$username"
 
 printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-home=$(getent passwd "$username" | awk -v RS='' -F ':' '{ print $6 }')
+home=$(getent passwd -- "$username" | awk -v RS='' -F ':' '{ print $6 }')
 pushd "$home"
 git clone https://aur.archlinux.org/yay.git
 pushd yay
-chown -R "$username:$username" .
+chown -R -- "$username:$username" .
 runuser -u "$username" -- makepkg -si --noconfirm
 popd
+rm --recursive --force yay
 popd
 
 sed -i -e '$s/.*/%wheel ALL=(ALL) ALL/' /etc/sudoers
