@@ -16,8 +16,7 @@ function unescape {
 	done
 }
 
-efivar -l >/dev/null 2>&1
-if [[ $? -eq 0 ]]; then
+if efivar -l >/dev/null 2>&1; then
 	bios='uefi'
 else
 	bios='legacy'
