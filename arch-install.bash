@@ -31,7 +31,7 @@ localectl set-keymap -- "$keymap"
 
 clear
 
-fdisk -l
+fdisk --list
 
 block_devices=()
 
@@ -49,6 +49,8 @@ block_device=$(
   )"
 )
 
+umount --quiet "$block_device" || true
+
 clear
 
 zones=(/usr/share/zoneinfo/**/*)
@@ -64,7 +66,7 @@ zone=$(
 clear
 
 
-if [[ $bios == 'uefi' ]]; then
+if [[ "$bios" == 'uefi' ]]; then
   read -r -e -p 'enter bootloader id> ' bootloader_id
 fi
 
@@ -77,7 +79,7 @@ while true; do
   printf '\n'
   read -r -s -p 're-enter password> ' repassword
   printf '\n'
-  if [[ $password == "$repassword" ]]; then
+  if [[ "$password" == "$repassword" ]]; then
     hashed_password=$(openssl passwd -1 -stdin <<< "$password")
     break
   fi
@@ -100,7 +102,7 @@ case "$bios" in
 esac
 
 partitions=()
-query=$(sfdisk -J "$block_device")
+query=$(sfdisk --json "$block_device")
 for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
   partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
 done
@@ -109,12 +111,14 @@ case "$bios" in
   'uefi')
     efi_fs="${partitions[0]}"
     root_fs="${partitions[1]}"
-    yes | mkfs.fat -F32 "$efi_fs"
-    yes | mkfs.ext4 "$root_fs"
+    umount --quiet "$efi_fs" "$root_fs" || true
+    mkfs.fat -F32 "$efi_fs"
+    mkfs.ext4 -F "$root_fs"
     ;;
   'legacy')
     root_fs="${partitions[0]}"
-    yes | mkfs.ext4 "$root_fs"
+    umount --quiet "$root_fs" || true
+    mkfs.ext4 -F "$root_fs"
     ;;
 esac
 
