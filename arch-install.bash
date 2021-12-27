@@ -52,6 +52,10 @@ block_device=$(
 umount --quiet "$block_device" || true
 
 clear
+echo "Make sure your device is unfrozen if you choose to encrypt your drive!"
+encryption_choice=$(printf 'Yes\nNo\n' | fzy -p 'do you want your drive to be encrypted?')
+
+clear
 
 zones=(/usr/share/zoneinfo/**/*)
 
@@ -86,47 +90,106 @@ while true; do
   clear
 done
 
-sgdisk --zap-all "$block_device"
+if [[ "$encryption_choice" == "Yes" ]]; then
+  wipe_choice=$(printf 'Yes\nNo\n' | fzy -p 'do you want to secure wipe your disk?')
+  if [[ "$wipe_choice" == "Yes" ]]; then
+    drive_choice=$(printf 'SSD\nHDD\n' | fzy -p 'what kind of drive do you have?')
+    # Erase disk
+    case "$drive_choice" in 
+      #wont add nvme for now. No way to test
+      'SSD')
+        frozen_state=$(hdparm -I "$block_device" 2>/dev/null | awk '/frozen/ { print $1,$2 }')
+        if [ "${frozen_state}" == "not frozen" ]; then
+            hdparm --user-master u --security-set-pass password "$block_device"
+            hdparm --user-master u --security-erase password "$block_device"
+        else
+            echo "Your drive is frozen. Please fix!" >&2
+            exit 1 
+        fi
+      ;;
+      'HDD')
+        cryptsetup open --type plain -d /dev/urandom "$block_device" to_be_wiped
+        dd if=/dev/zero of=/dev/mapper/to_be_wiped status=progress bs=1M
+        cryptsetup close to_be_wiped
+      ;;
+    esac
+  fi
 
-case "$bios" in
-  'uefi')
-    # efi part
-    sgdisk --new=1:0:+512M "$block_device"
-    # root
-    sgdisk --new=2:0:0 "$block_device"
+  sgdisk --zap-all "$block_device"
+
+  sgdisk --new=1:0:+512M "$block_device"
+  sgdisk --new=2:0:0 "$block_device"
+
+  partitions=()
+  query=$(sfdisk --json "$block_device")
+  for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
+    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
+  done
+
+  echo "Setting up Encryption using Cryptsetup"
+
+  cryptsetup -y -v  luksFormat --type luks1 "${partitions[1]}"
+  cryptsetup open "${partitions[1]}" cryptroot
+  mkfs.ext4 /dev/mapper/cryptroot
+  mount /dev/mapper/cryptroot /mnt 
+  
+  case "$bios" in
+    'uefi')
+      mkfs.fat -F32 "${partitions[0]}"
     ;;
-  'legacy')
-    # root
-    parted "$block_device" mklabel msdos mkpart primary 0% 100%
+    'legacy')
+      mkfs.ext4 "${partitions[0]}"
     ;;
-esac
+  esac
+  
+  mkdir /mnt/boot
+  mount "${partitions[0]}" /mnt/boot
 
-partitions=()
-query=$(sfdisk --json "$block_device")
-for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
-  partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
-done
+else
+  sgdisk --zap-all "$block_device"
 
-case "$bios" in
-  'uefi')
-    efi_fs="${partitions[0]}"
-    root_fs="${partitions[1]}"
-    umount --quiet "$efi_fs" "$root_fs" || true
-    mkfs.fat -F32 "$efi_fs"
-    mkfs.ext4 -F "$root_fs"
-    ;;
-  'legacy')
-    root_fs="${partitions[0]}"
-    umount --quiet "$root_fs" || true
-    mkfs.ext4 -F "$root_fs"
-    ;;
-esac
+  case "$bios" in
+    'uefi')
+      # efi part
+      sgdisk --new=1:0:+512M "$block_device"
+      # root
+      sgdisk --new=2:0:0 "$block_device"
+      ;;
+    'legacy')
+      # root
+      parted "$block_device" mklabel msdos mkpart primary 0% 100%
+      ;;
+  esac
 
-mount "$root_fs" /mnt
+  partitions=()
+  query=$(sfdisk --json "$block_device")
+  for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
+    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
+  done
 
-if [[ $bios == 'uefi' ]]; then
-  mkdir -p /mnt/boot/efi
-  mount "$efi_fs" /mnt/boot/efi
+  case "$bios" in
+    'uefi')
+      efi_fs="${partitions[0]}"
+      root_fs="${partitions[1]}"
+      umount --quiet "$efi_fs" "$root_fs" || true
+      mkfs.fat -F32 "$efi_fs"
+      mkfs.ext4 -F "$root_fs"
+      ;;
+    'legacy')
+      root_fs="${partitions[0]}"
+      umount --quiet "$root_fs" || true
+      mkfs.ext4 -F "$root_fs"
+      ;;
+  esac
+
+
+  mount "$root_fs" /mnt
+
+  if [[ $bios == 'uefi' ]]; then
+    mkdir /mnt/boot
+    mount "$efi_fs" /mnt/boot
+    mkdir -p /mnt/boot/efi
+  fi
 fi
 
 packages=(
@@ -148,15 +211,26 @@ packages=(
 
 pacstrap /mnt "${packages[@]}"
 
+if [[ "$encryption_choice" == "Yes" ]]; then
+  sed -i "s/[[:space:]]*HOOKS=.*/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt filesystems fsck)/" /mnt/etc/mkinitcpio.conf
+  
+fi
+
 genfstab -U /mnt >> /mnt/etc/fstab
 
-export hostname username hashed_password keymap zone bios block_device
+device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
+
+export hostname username hashed_password keymap zone bios block_device encryption_choice device_uuid
 
 if [[ $bios == 'uefi' ]]; then
   export bootloader_id
 fi
 
 arch-chroot /mnt /bin/bash <<'EOF'
+set -euo pipefail
+
+shopt -s extglob globstar nullglob
+
 printf 'KEYMAP=%s\n' "$keymap" > /etc/vconsole.conf
 
 ln -sf "$zone" /etc/localtime
@@ -170,21 +244,28 @@ printf '%s\n' 'LANG=en_US.UTF-8' > /etc/locale.conf
 
 printf '%s\n' "$hostname" > /etc/hostname
 
+if [[ "$encryption_choice" == "Yes" ]]; then
+  sed -i "s/[[:space:]]*GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet cryptdevice=UUID=$device_uuid:cryptroot root=\\/dev\\/mapper\\/cryptroot\"/" /etc/default/grub
+fi
+
 case "$bios" in
   'uefi')
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id="$bootloader_id"
+    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id="$bootloader_id"
     ;;
   'legacy')
     grub-install --target=i386-pc "$block_device"
     ;;
 esac
 
+
 grub-mkconfig -o /boot/grub/grub.cfg
+
+mkinitcpio -P
 
 if [[ $bios == 'uefi' ]]; then
   # magic
-  mkdir -p /boot/efi/EFI/boot
-  cp "/boot/efi/EFI/$bootloader_id/grubx64.efi" /boot/efi/EFI/boot/bootx64.efi
+  mkdir -p /boot/EFI/boot
+  cp "/boot/EFI/$bootloader_id/grubx64.efi" /boot/EFI/boot/bootx64.efi
 fi
 
 useradd -m -G wheel -p "$hashed_password" -- "$username"
@@ -207,3 +288,4 @@ systemctl enable NetworkManager
 EOF
 
 umount -R /mnt
+cryptsetup close cryptroot
