@@ -52,7 +52,7 @@ block_device=$(
 umount --quiet "$block_device" || true
 
 clear
-echo "Make sure your device is unfrozen if you choose to encrypt your drive!"
+echo "When using an SSD make sure your disk is unfrozen if you choose to encrypt your installation!"
 encryption_choice=$(printf 'Yes\nNo\n' | fzy -p 'do you want your drive to be encrypted?')
 
 clear
@@ -68,7 +68,6 @@ zone=$(
 )
 
 clear
-
 
 if [[ "$bios" == 'uefi' ]]; then
   read -r -e -p 'enter bootloader id> ' bootloader_id
@@ -182,14 +181,8 @@ else
       ;;
   esac
 
-
   mount "$root_fs" /mnt
 
-  if [[ $bios == 'uefi' ]]; then
-    mkdir /mnt/boot
-    mount "$efi_fs" /mnt/boot
-    mkdir -p /mnt/boot/efi
-  fi
 fi
 
 packages=(
