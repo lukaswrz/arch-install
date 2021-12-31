@@ -108,7 +108,7 @@ if [[ "$encryption_choice" == "Yes" ]]; then
       ;;
       'HDD')
         cryptsetup open --type plain -d /dev/urandom "$block_device" to_be_wiped
-        dd if=/dev/zero of=/dev/mapper/to_be_wiped status=progress bs=1M
+        dd if=/dev/zero of=/dev/mapper/to_be_wiped status=progress bs=1M || true
         cryptsetup close to_be_wiped
       ;;
     esac
