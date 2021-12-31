@@ -183,6 +183,10 @@ else
 
   mount "$root_fs" /mnt
 
+  if [[ $bios == 'uefi' ]]; then
+    mkdir /mnt/boot
+    mount "$efi_fs" /mnt/boot
+  fi
 fi
 
 packages=(
