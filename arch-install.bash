@@ -127,7 +127,7 @@ if [[ "$encryption_choice" == "Yes" ]]; then
 
   echo "Setting up Encryption using Cryptsetup"
 
-  cryptsetup -y -v  luksFormat --type luks1 "${partitions[1]}"
+  cryptsetup -y -v  luksFormat "${partitions[1]}"
   cryptsetup open "${partitions[1]}" cryptroot
   mkfs.ext4 /dev/mapper/cryptroot
   mount /dev/mapper/cryptroot /mnt 
