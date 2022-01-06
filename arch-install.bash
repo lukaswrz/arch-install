@@ -4,13 +4,13 @@ set -euo pipefail
 
 shopt -s extglob globstar nullglob
 
-function escape {
+function escape() {
   for a in "$@"; do
     printf '%s\n' "${a@Q}"
   done
 }
 
-function unescape {
+function unescape() {
   for a in "$@"; do
     eval "cat <<< $a"
   done
@@ -83,7 +83,7 @@ while true; do
   read -r -s -p 're-enter password> ' repassword
   printf '\n'
   if [[ "$password" == "$repassword" ]]; then
-    hashed_password=$(openssl passwd -1 -stdin <<< "$password")
+    hashed_password=$(openssl passwd -1 -stdin <<<"$password")
     break
   fi
   clear
@@ -94,22 +94,22 @@ if [[ "$encryption_choice" == "Yes" ]]; then
   if [[ "$wipe_choice" == "Yes" ]]; then
     drive_choice=$(printf 'SSD\nHDD\n' | fzy -p 'what kind of drive do you have?')
     # Erase disk
-    case "$drive_choice" in 
-      #wont add nvme for now. No way to test
-      'SSD')
-        frozen_state=$(hdparm -I "$block_device" 2>/dev/null | awk '/frozen/ { print $1,$2 }')
-        if [ "${frozen_state}" == "not frozen" ]; then
-            hdparm --user-master u --security-set-pass password "$block_device"
-            hdparm --user-master u --security-erase password "$block_device"
-        else
-            echo "Your drive is frozen. Please fix!" >&2
-            exit 1 
-        fi
+    case "$drive_choice" in
+    #wont add nvme for now. No way to test
+    'SSD')
+      frozen_state=$(hdparm -I "$block_device" 2>/dev/null | awk '/frozen/ { print $1,$2 }')
+      if [ "${frozen_state}" == "not frozen" ]; then
+        hdparm --user-master u --security-set-pass password "$block_device"
+        hdparm --user-master u --security-erase password "$block_device"
+      else
+        echo "Your drive is frozen. Please fix!" >&2
+        exit 1
+      fi
       ;;
-      'HDD')
-        cryptsetup open --type plain -d /dev/urandom "$block_device" to_be_wiped
-        dd if=/dev/zero of=/dev/mapper/to_be_wiped status=progress bs=1M || true
-        cryptsetup close to_be_wiped
+    'HDD')
+      cryptsetup open --type plain -d /dev/urandom "$block_device" to_be_wiped
+      dd if=/dev/zero of=/dev/mapper/to_be_wiped status=progress bs=1M || true
+      cryptsetup close to_be_wiped
       ;;
     esac
   fi
@@ -121,26 +121,26 @@ if [[ "$encryption_choice" == "Yes" ]]; then
 
   partitions=()
   query=$(sfdisk --json "$block_device")
-  for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
-    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
+  for k in $(jq '.partitiontable.partitions | keys | .[]' <<<"$query"); do
+    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<<"$query")")
   done
 
   echo "Setting up Encryption using Cryptsetup"
 
-  cryptsetup -y -v  luksFormat "${partitions[1]}"
+  cryptsetup -y -v luksFormat "${partitions[1]}"
   cryptsetup open "${partitions[1]}" cryptroot
   mkfs.ext4 /dev/mapper/cryptroot
-  mount /dev/mapper/cryptroot /mnt 
-  
+  mount /dev/mapper/cryptroot /mnt
+
   case "$bios" in
-    'uefi')
-      mkfs.fat -F32 "${partitions[0]}"
+  'uefi')
+    mkfs.fat -F32 "${partitions[0]}"
     ;;
-    'legacy')
-      mkfs.ext4 "${partitions[0]}"
+  'legacy')
+    mkfs.ext4 "${partitions[0]}"
     ;;
   esac
-  
+
   mkdir /mnt/boot
   mount "${partitions[0]}" /mnt/boot
 
@@ -148,37 +148,37 @@ else
   sgdisk --zap-all "$block_device"
 
   case "$bios" in
-    'uefi')
-      # efi part
-      sgdisk --new=1:0:+512M "$block_device"
-      # root
-      sgdisk --new=2:0:0 "$block_device"
-      ;;
-    'legacy')
-      # root
-      parted "$block_device" mklabel msdos mkpart primary 0% 100%
-      ;;
+  'uefi')
+    # efi part
+    sgdisk --new=1:0:+512M "$block_device"
+    # root
+    sgdisk --new=2:0:0 "$block_device"
+    ;;
+  'legacy')
+    # root
+    parted "$block_device" mklabel msdos mkpart primary 0% 100%
+    ;;
   esac
 
   partitions=()
   query=$(sfdisk --json "$block_device")
-  for k in $(jq '.partitiontable.partitions | keys | .[]' <<< "$query"); do
-    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<< "$query")")
+  for k in $(jq '.partitiontable.partitions | keys | .[]' <<<"$query"); do
+    partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<<"$query")")
   done
 
   case "$bios" in
-    'uefi')
-      efi_fs="${partitions[0]}"
-      root_fs="${partitions[1]}"
-      umount --quiet "$efi_fs" "$root_fs" || true
-      mkfs.fat -F32 "$efi_fs"
-      mkfs.ext4 -F "$root_fs"
-      ;;
-    'legacy')
-      root_fs="${partitions[0]}"
-      umount --quiet "$root_fs" || true
-      mkfs.ext4 -F "$root_fs"
-      ;;
+  'uefi')
+    efi_fs="${partitions[0]}"
+    root_fs="${partitions[1]}"
+    umount --quiet "$efi_fs" "$root_fs" || true
+    mkfs.fat -F32 "$efi_fs"
+    mkfs.ext4 -F "$root_fs"
+    ;;
+  'legacy')
+    root_fs="${partitions[0]}"
+    umount --quiet "$root_fs" || true
+    mkfs.ext4 -F "$root_fs"
+    ;;
   esac
 
   mount "$root_fs" /mnt
@@ -210,10 +210,10 @@ pacstrap /mnt "${packages[@]}"
 
 if [[ "$encryption_choice" == "Yes" ]]; then
   sed -i "s/[[:space:]]*HOOKS=.*/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt filesystems fsck)/" /mnt/etc/mkinitcpio.conf
-  
+
 fi
 
-genfstab -U /mnt >> /mnt/etc/fstab
+genfstab -U /mnt >>/mnt/etc/fstab
 
 device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
 
@@ -285,4 +285,6 @@ systemctl enable NetworkManager
 EOF
 
 umount -R /mnt
-cryptsetup close cryptroot
+if [[ "$encryption_choice" == "Yes" ]]; then
+  cryptsetup close cryptroot
+fi
