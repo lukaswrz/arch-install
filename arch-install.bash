@@ -21,7 +21,9 @@ function unescape() {
 
 while getopts "hg:" opt; do
   case $opt in
-  g) git_repo=$OPTARG ;;
+  g)
+    git_repo="$OPTARG"
+    ;;
   h)
     usage
     exit 0
@@ -212,7 +214,7 @@ else
 
   mount "$root_fs" /mnt
 
-  if [[ $bios == 'uefi' ]]; then
+  if [[ "$bios" == 'uefi' ]]; then
     mkdir /mnt/boot
     mount "$efi_fs" /mnt/boot
   fi
@@ -248,7 +250,7 @@ device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
 
 export hostname username hashed_password keymap zone bios block_device encryption_choice device_uuid
 
-if [[ $bios == 'uefi' ]]; then
+if [[ "$bios" == 'uefi' ]]; then
   export bootloader_id
 fi
 
@@ -257,38 +259,37 @@ function chrootsetup() {
 
   shopt -s extglob globstar nullglob
 
-  printf 'KEYMAP=%s\n' "$keymap" > /etc/vconsole.conf
+  printf 'KEYMAP=%s\n' "$keymap" >/etc/vconsole.conf
 
   ln -sf "$zone" /etc/localtime
 
   hwclock --systohc
 
-  printf '%s\n' 'en_US.UTF-8 UTF-8' > /etc/locale.gen
+  printf '%s\n' 'en_US.UTF-8 UTF-8' >/etc/locale.gen
   locale-gen
 
-  printf '%s\n' 'LANG=en_US.UTF-8' > /etc/locale.conf
+  printf '%s\n' 'LANG=en_US.UTF-8' >/etc/locale.conf
 
-  printf '%s\n' "$hostname" > /etc/hostname
+  printf '%s\n' "$hostname" >/etc/hostname
 
   if [[ "$encryption_choice" == "Yes" ]]; then
     sed -i "s/[[:space:]]*GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet cryptdevice=UUID=$device_uuid:cryptroot root=\\/dev\\/mapper\\/cryptroot\"/" /etc/default/grub
   fi
 
   case "$bios" in
-    'uefi')
-      grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id="$bootloader_id"
-      ;;
-    'legacy')
-      grub-install --target=i386-pc "$block_device"
-      ;;
+  'uefi')
+    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id="$bootloader_id"
+    ;;
+  'legacy')
+    grub-install --target=i386-pc "$block_device"
+    ;;
   esac
-
 
   grub-mkconfig -o /boot/grub/grub.cfg
 
   mkinitcpio -P
 
-  if [[ $bios == 'uefi' ]]; then
+  if [[ "$bios" == 'uefi' ]]; then
     # magic
     mkdir -p /boot/EFI/boot
     cp "/boot/EFI/$bootloader_id/grubx64.efi" /boot/EFI/boot/bootx64.efi
@@ -296,7 +297,7 @@ function chrootsetup() {
 
   useradd -m -G wheel -p "$hashed_password" -- "$username"
 
-  printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+  printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >>/etc/sudoers
 
   # home dir
   home=$(getent passwd -- "$username" | awk -v RS='' -F ':' '{ print $6 }')
