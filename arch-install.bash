@@ -1,8 +1,11 @@
 #!/bin/bash
-
 set -euo pipefail
 
 shopt -s extglob globstar nullglob
+
+function usage() {
+  echo "Usage: $0 [-h] [-g repository] [argv...]" 1>&2
+}
 
 function escape() {
   for a in "$@"; do
@@ -15,6 +18,32 @@ function unescape() {
     eval "cat <<< $a"
   done
 }
+
+while getopts "hg:i:" opt; do
+  case $opt in
+  g) git_repo=$OPTARG ;;
+  h)
+    usage
+    exit 0
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+if [[ -v git_repo ]]; then
+  export git_repo
+  encoded_command="$(escape "$@")"
+  export encoded_command
+  export -f unescape
+elif [[ "$#" != 0 ]]; then
+  usage
+  exit 1
+fi
 
 if efivar -l >/dev/null 2>&1; then
   bios='uefi'
@@ -269,6 +298,7 @@ useradd -m -G wheel -p "$hashed_password" -- "$username"
 
 printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
+# home dir
 home=$(getent passwd -- "$username" | awk -v RS='' -F ':' '{ print $6 }')
 pushd "$home"
 git clone https://aur.archlinux.org/yay.git
@@ -276,12 +306,25 @@ pushd yay
 chown -R -- "$username:$username" .
 runuser -u "$username" -- makepkg -si --noconfirm
 popd
+
+if [[ -v git_repo ]]; then
+  git clone "$git_repo"
+  pushd "$(basename "$git_repo" .git)"
+  command=()
+  while read -r line; do
+    command+=("$(unescape "$line")")
+  done <<<"$encoded_command"
+  "${command[@]}"
+  popd
+fi
+
 rm --recursive --force yay
 popd
 
 sed -i -e '$s/.*/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
 systemctl enable NetworkManager
+
 EOF
 
 umount -R /mnt
