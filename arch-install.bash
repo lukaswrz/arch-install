@@ -33,12 +33,16 @@ while getopts "hg:i:" opt; do
   esac
 done
 
+shift $((OPTIND - 1))
+
 if [[ -v git_repo ]]; then
   export git_repo
-  shift $((OPTIND - 1))
   encoded_command="$(escape "$@")"
   export encoded_command
   export -f unescape
+elif [[ "$#" != 0 ]]; then
+  usage
+  exit 1
 fi
 
 if efivar -l >/dev/null 2>&1; then
