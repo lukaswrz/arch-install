@@ -252,80 +252,83 @@ if [[ $bios == 'uefi' ]]; then
   export bootloader_id
 fi
 
-arch-chroot /mnt /bin/bash <<'EOF'
-set -euo pipefail
+function chrootsetup() {
+  set -euo pipefail
 
-shopt -s extglob globstar nullglob
+  shopt -s extglob globstar nullglob
 
-printf 'KEYMAP=%s\n' "$keymap" > /etc/vconsole.conf
+  printf 'KEYMAP=%s\n' "$keymap" > /etc/vconsole.conf
 
-ln -sf "$zone" /etc/localtime
+  ln -sf "$zone" /etc/localtime
 
-hwclock --systohc
+  hwclock --systohc
 
-printf '%s\n' 'en_US.UTF-8 UTF-8' > /etc/locale.gen
-locale-gen
+  printf '%s\n' 'en_US.UTF-8 UTF-8' > /etc/locale.gen
+  locale-gen
 
-printf '%s\n' 'LANG=en_US.UTF-8' > /etc/locale.conf
+  printf '%s\n' 'LANG=en_US.UTF-8' > /etc/locale.conf
 
-printf '%s\n' "$hostname" > /etc/hostname
+  printf '%s\n' "$hostname" > /etc/hostname
 
-if [[ "$encryption_choice" == "Yes" ]]; then
-  sed -i "s/[[:space:]]*GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet cryptdevice=UUID=$device_uuid:cryptroot root=\\/dev\\/mapper\\/cryptroot\"/" /etc/default/grub
-fi
+  if [[ "$encryption_choice" == "Yes" ]]; then
+    sed -i "s/[[:space:]]*GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet cryptdevice=UUID=$device_uuid:cryptroot root=\\/dev\\/mapper\\/cryptroot\"/" /etc/default/grub
+  fi
 
-case "$bios" in
-  'uefi')
-    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id="$bootloader_id"
-    ;;
-  'legacy')
-    grub-install --target=i386-pc "$block_device"
-    ;;
-esac
+  case "$bios" in
+    'uefi')
+      grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id="$bootloader_id"
+      ;;
+    'legacy')
+      grub-install --target=i386-pc "$block_device"
+      ;;
+  esac
 
 
-grub-mkconfig -o /boot/grub/grub.cfg
+  grub-mkconfig -o /boot/grub/grub.cfg
 
-mkinitcpio -P
+  mkinitcpio -P
 
-if [[ $bios == 'uefi' ]]; then
-  # magic
-  mkdir -p /boot/EFI/boot
-  cp "/boot/EFI/$bootloader_id/grubx64.efi" /boot/EFI/boot/bootx64.efi
-fi
+  if [[ $bios == 'uefi' ]]; then
+    # magic
+    mkdir -p /boot/EFI/boot
+    cp "/boot/EFI/$bootloader_id/grubx64.efi" /boot/EFI/boot/bootx64.efi
+  fi
 
-useradd -m -G wheel -p "$hashed_password" -- "$username"
+  useradd -m -G wheel -p "$hashed_password" -- "$username"
 
-printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+  printf '%s\n' '%wheel ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-# home dir
-home=$(getent passwd -- "$username" | awk -v RS='' -F ':' '{ print $6 }')
-pushd "$home"
-git clone https://aur.archlinux.org/yay.git
-pushd yay
-chown -R -- "$username:$username" .
-runuser -u "$username" -- makepkg -si --noconfirm
-popd
-
-if [[ -v git_repo ]]; then
-  git clone "$git_repo"
-  pushd "$(basename "$git_repo" .git)"
-  command=()
-  while read -r line; do
-    command+=("$(unescape "$line")")
-  done <<<"$encoded_command"
-  "${command[@]}"
+  # home dir
+  home=$(getent passwd -- "$username" | awk -v RS='' -F ':' '{ print $6 }')
+  pushd "$home"
+  git clone https://aur.archlinux.org/yay.git
+  pushd yay
+  chown -R -- "$username:$username" .
+  runuser -u "$username" -- makepkg -si --noconfirm
   popd
-fi
 
-rm --recursive --force yay
-popd
+  if [[ -v git_repo ]]; then
+    git clone "$git_repo"
+    pushd "$(basename "$git_repo" .git)"
+    command=()
+    while read -r line; do
+      command+=("$(unescape "$line")")
+    done <<<"$encoded_command"
+    "${command[@]}"
+    popd
+  fi
 
-sed -i -e '$s/.*/%wheel ALL=(ALL) ALL/' /etc/sudoers
+  rm --recursive --force yay
+  popd
 
-systemctl enable NetworkManager
+  sed -i -e '$s/.*/%wheel ALL=(ALL) ALL/' /etc/sudoers
 
-EOF
+  systemctl enable NetworkManager
+}
+
+export -f chrootsetup
+
+arch-chroot /mnt /bin/bash -c 'chrootsetup "$@"'
 
 umount -R /mnt
 if [[ "$encryption_choice" == "Yes" ]]; then
