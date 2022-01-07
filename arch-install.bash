@@ -19,7 +19,7 @@ function unescape() {
   done
 }
 
-while getopts "hg:i:" opt; do
+while getopts "hg:" opt; do
   case $opt in
   g) git_repo=$OPTARG ;;
   h)
