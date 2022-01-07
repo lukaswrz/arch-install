@@ -303,7 +303,6 @@ popd
 if [[ -v git_repo ]]; then
   git clone "$git_repo"
   pushd "$(basename "$git_repo" .git)"
-  echo $PWD
   IFS=';'
   for encoded_arg in $encoded_command; do
     command+=("$(base64 --decode <<<"$encoded_arg")")
