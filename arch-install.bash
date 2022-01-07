@@ -37,7 +37,6 @@ if [[ -v git_repo ]]; then
   export git_repo
   shift $((OPTIND - 1))
   encoded_command="$(escape "$@")"
-  echo "${encoded_command}"
   export encoded_command
   export -f unescape
 fi
