@@ -5,7 +5,6 @@ shopt -s extglob globstar nullglob
 
 function usage() {
   echo "Usage: $0 [-h] [-g repository] [argv...]" 1>&2
-  exit 1
 }
 
 function escape() {
@@ -20,10 +19,17 @@ function unescape() {
   done
 }
 
-while getopts "g:i:" opt; do
+while getopts "hg:i:" opt; do
   case $opt in
   g) git_repo=$OPTARG ;;
-  *) usage ;;
+  h)
+    usage
+    exit 0
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
   esac
 done
 
