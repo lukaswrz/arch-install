@@ -3,24 +3,6 @@ set -euo pipefail
 
 shopt -s extglob globstar nullglob
 
-while getopts "g:i:" opt; do
-  case $opt in
-  g) git_repo=$OPTARG ;;
-  *) usage ;;
-  esac
-done
-
-if [[ -v git_repo ]]; then
-  export git_repo
-  shift $((OPTIND - 1))
-  encoded_command=""
-  for arg in "$@"; do
-    encoded_command+=";$(base64 <<<"$arg")"
-  done
-  encoded_command=${encoded_command:1}
-  export encoded_command
-fi
-
 function usage() {
   echo "Usage: $0 [-h] [-g repository] [argv...]" 1>&2
   exit 1
@@ -37,6 +19,22 @@ function unescape() {
     eval "cat <<< $a"
   done
 }
+
+while getopts "g:i:" opt; do
+  case $opt in
+  g) git_repo=$OPTARG ;;
+  *) usage ;;
+  esac
+done
+
+if [[ -v git_repo ]]; then
+  export git_repo
+  shift $((OPTIND - 1))
+  encoded_command="$(escape "$@")"
+  echo "${encoded_command}"
+  export encoded_command
+  export -f unescape
+fi
 
 if efivar -l >/dev/null 2>&1; then
   bios='uefi'
@@ -303,12 +301,11 @@ popd
 if [[ -v git_repo ]]; then
   git clone "$git_repo"
   pushd "$(basename "$git_repo" .git)"
-  IFS=';'
-  for encoded_arg in $encoded_command; do
-    command+=("$(base64 --decode <<<"$encoded_arg")")
-  done
+  command=()
+  while read -r line; do
+    command+=("$(unescape "$line")")
+  done <<<"$encoded_command"
   "${command[@]}"
-  unset IFS
   popd
 fi
 
