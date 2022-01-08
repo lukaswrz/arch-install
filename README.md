@@ -33,13 +33,15 @@ running the `arch-install.bash` script.
 ## Kernel parameters
 
 Use `-k` to pass a format string that will be inserted in
-`GRUB_CMDLINE_LINUX_DEFAULT` from `/etc/default/grub`.
+`GRUB_CMDLINE_LINUX_DEFAULT` from `/etc/default/grub`. Make sure to escape the
+dollar signs or use single quotes to prevent variables from being expanded by
+the shell.
 
 ### Syntax
 
-The format string can look like this:
+Example:
 
-`${default} ${kaby_lake_refresh_hang_fix} additional=parameter $${escaped}`
+`# arch-install/arch-install.bash -k '${default} ${kaby_lake_refresh_hang_fix} additional=parameter $${escaped}'`
 
 Here, `${default}` will be expanded to the kernel parameters which would be
 inserted by default. `$${escaped}` will turn into `${escaped}`.
