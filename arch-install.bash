@@ -4,7 +4,10 @@ set -euo pipefail
 shopt -s extglob globstar nullglob
 
 function usage() {
-  echo "Usage: $0 [-h] [-g repository] [argv...]" 1>&2
+  if [[ "$#" != 0 ]]; then
+    return 1
+  fi
+  printf '%s\n' "Usage: $0 [-h] [-k format] [-g repository] [argv...]" 1>&2
 }
 
 function escape() {
@@ -19,8 +22,96 @@ function unescape() {
   done
 }
 
-while getopts "hg:" opt; do
-  case $opt in
+function grubescape() {
+  local conv
+  for a in "$@"; do
+    conv="${a//\\/\\\\}"
+    conv="${conv//\"/\\\"}"
+    conv="\"$conv\""
+    printf '%s\n' "$conv"
+  done
+}
+
+function parsefmt() {
+  local output slice vars fmt
+  declare -A vars
+
+  fmt="$1"
+
+  shift
+
+  for assign in "$@"; do
+    if [[ "$assign" =~ ([a-zA-Z_][a-zA-Z0-9_]*)=(.*)$ ]]; then
+      local name val
+      name="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      vars["$name"]="$val"
+    else
+      return 1
+    fi
+  done
+
+  for (( i = 0; i < "${#fmt}"; i++ )); do
+    if [[ "${fmt:i:1}" == '$' ]]; then
+      slice="$i"
+      (( i++ ))
+      if [[ "${fmt:i:1}" == '$' ]]; then
+        output+='$'
+      elif [[ "$i" == "${#fmt}" ]]; then
+        output+="${fmt:slice:i}"
+        break
+      elif [[ "${fmt:i:1}" == '{' ]]; then
+        (( i++ ))
+        if [[ "${fmt:i:1}" == '}' ]]; then
+          output+="${fmt:slice:i}"
+        elif [[ "$i" == "${#fmt}" ]]; then
+          output+="${fmt:slice:i}"
+          break
+        else
+          local subst
+          subst=''
+          if [[ "${fmt:i:1}" =~ [a-zA-Z_] ]]; then
+            subst+="${fmt:i:1}"
+            (( i++ ))
+            while [[ "${fmt:i:1}" =~ [a-zA-Z0-9_] ]]; do
+              subst+="${fmt:i:1}"
+              (( i++ ))
+            done
+            if [[ "${fmt:i:1}" == '}' ]]; then
+              if [[ -v "vars[$subst]" ]]; then
+                output+="${vars["$subst"]}"
+              else
+                len="$(( i + 1 - slice ))"
+                output+="${fmt:slice:len}"
+              fi
+            else
+              len="$(( i + 1 - slice ))"
+              output+="${fmt:slice:len}"
+            fi
+          else
+            len="$(( i + 1 - slice ))"
+            output+="${fmt:slice:len}"
+          fi
+        fi
+      else
+        len="$(( i + 1 - slice ))"
+        output+="${fmt:slice:len}"
+      fi
+    else
+      output+="${fmt:i:1}"
+    fi
+  done
+
+  printf '%s\n' "$output"
+}
+
+cmdline_linux_default_fmt='${default}'
+
+while getopts "hk:g:" opt; do
+  case "$opt" in
+  k)
+    cmdline_linux_default_fmt="$OPTARG"
+    ;;
   g)
     git_repo="$OPTARG"
     ;;
@@ -248,11 +339,23 @@ genfstab -U /mnt >>/mnt/etc/fstab
 
 device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
 
-export hostname username hashed_password keymap zone bios block_device encryption_choice device_uuid
+export \
+  hostname \
+  username \
+  hashed_password \
+  keymap \
+  zone \
+  bios \
+  block_device \
+  encryption_choice \
+  device_uuid \
+  cmdline_linux_default_fmt
 
 if [[ "$bios" == 'uefi' ]]; then
   export bootloader_id
 fi
+
+export -f grubescape parsefmt
 
 function chrootsetup() {
   set -euo pipefail
@@ -272,9 +375,42 @@ function chrootsetup() {
 
   printf '%s\n' "$hostname" >/etc/hostname
 
+  default='loglevel=3 quiet'
+  crypt="cryptdevice=UUID=$device_uuid:cryptroot root=/dev/mapper/cryptroot"
+
   if [[ "$encryption_choice" == "Yes" ]]; then
-    sed -i "s/[[:space:]]*GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"loglevel=3 quiet cryptdevice=UUID=$device_uuid:cryptroot root=\\/dev\\/mapper\\/cryptroot\"/" /etc/default/grub
+    default="$default $crypt"
   fi
+
+  cmdline_linux_default="$(
+    grubescape "$(
+      parsefmt "$cmdline_linux_default_fmt" \
+        "default=$default" \
+        "crypt=$crypt" \
+        'kaby_lake_refresh_hang_fix=intel_idle.max_cstate=1 i915.enable_dc=0' \
+        'i8042_touchpad_suspend_fix=i8042.reset i8042.nomux i8042.nopnp i8042.noloop'
+    )"
+  )"
+
+  cat <<EOF >/etc/default/grub
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=1
+GRUB_DISTRIBUTOR="Arch"
+GRUB_CMDLINE_LINUX_DEFAULT=$cmdline_linux_default
+GRUB_CMDLINE_LINUX=""
+
+GRUB_PRELOAD_MODULES="part_gpt part_msdos"
+
+GRUB_TIMEOUT_STYLE=menu
+
+GRUB_TERMINAL_INPUT=console
+
+GRUB_GFXMODE=auto
+
+GRUB_GFXPAYLOAD_LINUX=keep
+
+GRUB_DISABLE_RECOVERY=true
+EOF
 
   case "$bios" in
   'uefi')
