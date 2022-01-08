@@ -7,7 +7,7 @@ function usage() {
   if [[ "$#" != 0 ]]; then
     return 1
   fi
-  printf '%s\n' "Usage: $0 [-h] [-k format] [-g repository] [argv...]" 1>&2
+  printf '%s\n' "Usage: $0 [-h] [-k format] [-g repository] [command...]" 1>&2
 }
 
 function escape() {
