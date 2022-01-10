@@ -7,7 +7,7 @@ function usage() {
   if [[ "$#" != 0 ]]; then
     return 1
   fi
-  printf '%s\n' "Usage: $0 [-h] [-k format] [-g repository] [command...]" 1>&2
+  printf '%s\n' "Usage: $0 [-h] [-k format] [-p package] [-g repository] [command...]" 1>&2
 }
 
 function escape() {
@@ -51,17 +51,17 @@ function parsefmt() {
     fi
   done
 
-  for (( i = 0; i < "${#fmt}"; i++ )); do
+  for ((i = 0; i < "${#fmt}"; i++)); do
     if [[ "${fmt:i:1}" == '$' ]]; then
       slice="$i"
-      (( i++ ))
+      ((i++))
       if [[ "${fmt:i:1}" == '$' ]]; then
         output+='$'
       elif [[ "$i" == "${#fmt}" ]]; then
         output+="${fmt:slice:i}"
         break
       elif [[ "${fmt:i:1}" == '{' ]]; then
-        (( i++ ))
+        ((i++))
         if [[ "${fmt:i:1}" == '}' ]]; then
           output+="${fmt:slice:i}"
         elif [[ "$i" == "${#fmt}" ]]; then
@@ -72,29 +72,29 @@ function parsefmt() {
           subst=''
           if [[ "${fmt:i:1}" =~ [a-zA-Z_] ]]; then
             subst+="${fmt:i:1}"
-            (( i++ ))
+            ((i++))
             while [[ "${fmt:i:1}" =~ [a-zA-Z0-9_] ]]; do
               subst+="${fmt:i:1}"
-              (( i++ ))
+              ((i++))
             done
             if [[ "${fmt:i:1}" == '}' ]]; then
               if [[ -v "vars[$subst]" ]]; then
                 output+="${vars["$subst"]}"
               else
-                len="$(( i + 1 - slice ))"
+                len="$((i + 1 - slice))"
                 output+="${fmt:slice:len}"
               fi
             else
-              len="$(( i + 1 - slice ))"
+              len="$((i + 1 - slice))"
               output+="${fmt:slice:len}"
             fi
           else
-            len="$(( i + 1 - slice ))"
+            len="$((i + 1 - slice))"
             output+="${fmt:slice:len}"
           fi
         fi
       else
-        len="$(( i + 1 - slice ))"
+        len="$((i + 1 - slice))"
         output+="${fmt:slice:len}"
       fi
     else
@@ -106,14 +106,32 @@ function parsefmt() {
 }
 
 cmdline_linux_default_fmt='${default}'
+packages=(
+  base
+  base-devel
+  linux
+  linux-firmware
+  linux-headers
+  git
+  mkinitcpio
+  networkmanager
+  grub
+  sudo
+  efibootmgr
+  xdg-utils
+  xdg-user-dirs
+)
 
-while getopts "hk:g:" opt; do
+while getopts "hp:k:g:" opt; do
   case "$opt" in
   k)
     cmdline_linux_default_fmt="$OPTARG"
     ;;
   g)
     git_repo="$OPTARG"
+    ;;
+  p)
+    packages+=("$OPTARG")
     ;;
   h)
     usage
@@ -310,23 +328,6 @@ else
     mount "$efi_fs" /mnt/boot
   fi
 fi
-
-packages=(
-  base
-  base-devel
-  linux
-  linux-firmware
-  linux-headers
-  git
-  mkinitcpio
-  networkmanager
-  neovim
-  grub
-  sudo
-  efibootmgr
-  xdg-utils
-  xdg-user-dirs
-)
 
 pacstrap /mnt "${packages[@]}"
 
