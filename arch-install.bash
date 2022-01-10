@@ -51,55 +51,37 @@ function parsefmt() {
     fi
   done
 
-  for ((i = 0; i < "${#fmt}"; i++)); do
+  for ((i = 0; i < ${#fmt}; i++)); do
+    slice="$i"
     if [[ "${fmt:i:1}" == '$' ]]; then
-      slice="$i"
       ((i++))
       if [[ "${fmt:i:1}" == '$' ]]; then
         output+='$'
-      elif [[ "$i" == "${#fmt}" ]]; then
-        output+="${fmt:slice:i}"
-        break
-      elif [[ "${fmt:i:1}" == '{' ]]; then
+        continue
+      elif [[ "${fmt:i:1}" == '{' ]] && ((i < ${#fmt})); then
         ((i++))
-        if [[ "${fmt:i:1}" == '}' ]]; then
-          output+="${fmt:slice:i}"
-        elif [[ "$i" == "${#fmt}" ]]; then
-          output+="${fmt:slice:i}"
-          break
-        else
+        if [[ "${fmt:i:1}" != '}' ]] && ((i < ${#fmt})); then
           local subst
           subst=''
           if [[ "${fmt:i:1}" =~ [a-zA-Z_] ]]; then
             subst+="${fmt:i:1}"
             ((i++))
-            while [[ "${fmt:i:1}" =~ [a-zA-Z0-9_] ]]; do
+            while [[ "${fmt:i:1}" =~ [a-zA-Z0-9_] ]] && ((i < ${#fmt})); do
               subst+="${fmt:i:1}"
               ((i++))
             done
             if [[ "${fmt:i:1}" == '}' ]]; then
               if [[ -v "vars[$subst]" ]]; then
                 output+="${vars["$subst"]}"
-              else
-                len="$((i + 1 - slice))"
-                output+="${fmt:slice:len}"
+                continue
               fi
-            else
-              len="$((i + 1 - slice))"
-              output+="${fmt:slice:len}"
             fi
-          else
-            len="$((i + 1 - slice))"
-            output+="${fmt:slice:len}"
           fi
         fi
-      else
-        len="$((i + 1 - slice))"
-        output+="${fmt:slice:len}"
       fi
-    else
-      output+="${fmt:i:1}"
     fi
+    len="$((i + 1 - slice))"
+    output+="${fmt:slice:len}"
   done
 
   printf '%s\n' "$output"
