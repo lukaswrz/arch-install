@@ -34,16 +34,16 @@ running the `arch-install.bash` script.
 
 To add more packages to your installation use `-p`. E.g this can be helpful if you need to install dependencies for your dotfiles.
 
+### Syntax
+
+`# arch-install/arch-install.bash -p package -p anotherpackage`
+
 ## Kernel parameters
 
 Use `-k` to pass a format string that will be inserted in
 `GRUB_CMDLINE_LINUX_DEFAULT` from `/etc/default/grub`. Make sure to escape the
 dollar signs or use single quotes to prevent variables from being expanded by
 the shell.
-
-### Syntax
-
-`# arch-install/arch-install.bash -p package -p anotherpackage`
 
 ### Syntax
 
