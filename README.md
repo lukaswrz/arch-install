@@ -32,7 +32,7 @@ running the `arch-install.bash` script.
 
 ## Packages
 
-To add more packages to your installation use `-p`. E.g this can be helpful if you need to install dependencies for your dotfiles
+To add more packages to your installation use `-p`. E.g this can be helpful if you need to install dependencies for your dotfiles.
 
 ## Kernel parameters
 
