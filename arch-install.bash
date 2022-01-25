@@ -319,8 +319,17 @@ if [[ "$encryption_choice" == "Yes" ]]; then
 fi
 
 genfstab -U /mnt >>/mnt/etc/fstab
+if [[ "$encryption_choice" == "No" ]]; then
+  case "$bios" in
+  'uefi')
+    device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
+    ;;
+  'legacy')
+    device_uuid="$(blkid -s UUID -o value "${partitions[0]}")"
+    ;;
+  esac
 
-device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
+fi
 
 export \
   hostname \
