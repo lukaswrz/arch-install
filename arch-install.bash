@@ -247,31 +247,31 @@ if [[ "$encryption_choice" == "Yes" ]]; then
     partitions+=("$(jq --argjson k "$k" -r '.partitiontable.partitions | .[$k] | .node' <<<"$query")")
   done
 
-  echo "Setting up Encryption using Cryptsetup"
+  boot_fs="${partitions[0]}"
+  root_fs="${partitions[1]}"
 
-  cryptsetup -y -v luksFormat "${partitions[1]}"
-  cryptsetup open "${partitions[1]}" cryptroot
+  cryptsetup -y -v luksFormat "$root_fs"
+  cryptsetup open "$root_fs" cryptroot
   mkfs.ext4 /dev/mapper/cryptroot
   mount /dev/mapper/cryptroot /mnt
 
   case "$bios" in
   'uefi')
-    mkfs.fat -F32 "${partitions[0]}"
+    mkfs.fat -F32 "$boot_fs"
     ;;
   'legacy')
-    mkfs.ext4 "${partitions[0]}"
+    mkfs.ext4 "$boot_fs"
     ;;
   esac
 
   mkdir /mnt/boot
   mount "${partitions[0]}" /mnt/boot
-
 else
   sgdisk --zap-all "$block_device"
 
   case "$bios" in
   'uefi')
-    # efi part
+    # boot
     sgdisk --new=1:0:+512M "$block_device"
     # root
     sgdisk --new=2:0:0 "$block_device"
@@ -290,13 +290,14 @@ else
 
   case "$bios" in
   'uefi')
-    efi_fs="${partitions[0]}"
+    boot_fs="${partitions[0]}"
     root_fs="${partitions[1]}"
-    umount --quiet "$efi_fs" "$root_fs" || true
-    mkfs.fat -F32 "$efi_fs"
+    umount --quiet "$boot_fs" "$root_fs" || true
+    mkfs.fat -F32 "$boot_fs"
     mkfs.ext4 -F "$root_fs"
     ;;
   'legacy')
+    boot_fs="${partitions[0]}"
     root_fs="${partitions[0]}"
     umount --quiet "$root_fs" || true
     mkfs.ext4 -F "$root_fs"
@@ -307,7 +308,7 @@ else
 
   if [[ "$bios" == 'uefi' ]]; then
     mkdir /mnt/boot
-    mount "$efi_fs" /mnt/boot
+    mount "$boot_fs" /mnt/boot
   fi
 fi
 
@@ -320,7 +321,7 @@ fi
 
 genfstab -U /mnt >>/mnt/etc/fstab
 
-device_uuid="$(blkid -s UUID -o value "${partitions[1]}")"
+device_uuid="$(blkid -s UUID -o value "$root_fs")"
 
 export \
   hostname \
