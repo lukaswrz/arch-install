@@ -315,9 +315,20 @@ fi
 pacstrap /mnt "${packages[@]}"
 
 if [[ "$encryption_choice" == "Yes" ]]; then
-  sed -i "s/[[:space:]]*HOOKS=.*/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt filesystems fsck)/" /mnt/etc/mkinitcpio.conf
-
-fi
+  cat <<EOF
+MODULES=()
+BINARIES=()
+FILES=()
+HOOKS=(base udev autodetect keyboard keymap consolefont modconf block encrypt filesystems fsck)
+EOF
+elif [[ "$encryption_choice" == "No" ]]; then
+  cat <<EOF
+MODULES=()
+BINARIES=()
+FILES=()
+HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
+EOF
+fi >/mnt/etc/mkinitcpio.conf
 
 genfstab -U /mnt >>/mnt/etc/fstab
 
