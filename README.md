@@ -1,3 +1,5 @@
+Abandoned in favor of the official [archinstall](https://github.com/archlinux/archinstall).
+
 # arch-install
 
 A simple installation script for [Arch Linux](https://archlinux.org/).
